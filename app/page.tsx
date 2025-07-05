@@ -64,18 +64,33 @@ export default function TextToSpeech() {
   useEffect(() => {
     const fetchVoices = async () => {
       try {
+        setIsLoading(true)
         const response = await fetch("/api/voices")
         if (!response.ok) {
           throw new Error("Falha ao buscar vozes")
         }
         const data = await response.json()
-        setVoices(data.voices)
-        if (data.voices.length > 0) {
+        
+        if (data.voices && data.voices.length > 0) {
+          setVoices(data.voices)
           setSelectedVoice(data.voices[0].voice_id)
+          
+          // Verificar se estamos usando vozes de fallback
+          if (data.message && data.message.includes("fallback")) {
+            console.log("Usando vozes de fallback devido a problema com a API")
+            setUseDemoMode(true) // Ativar automaticamente o modo de demonstração
+            setApiLimitReached(true)
+          }
+        } else {
+          throw new Error("Nenhuma voz disponível")
         }
       } catch (err) {
-        setError("Erro ao carregar vozes. Por favor, tente novamente.")
-        console.error(err)
+        console.error("Erro ao carregar vozes:", err)
+        setError("Erro ao carregar vozes. Usando modo de demonstração.")
+        setUseDemoMode(true)
+        setApiLimitReached(true)
+      } finally {
+        setIsLoading(false)
       }
     }
 
@@ -219,6 +234,17 @@ export default function TextToSpeech() {
       if (!response.ok) {
         console.error("Erro detalhado:", data)
 
+        // Verificar se devemos usar o modo de fallback
+        if (data.useFallback) {
+          setApiLimitReached(true)
+          setUseDemoMode(true)
+          
+          // Executar o modo de demonstração automaticamente
+          setTimeout(() => useDemoAudio(), 500)
+          
+          throw new Error(data.error || "Falha ao gerar áudio. Usando modo de demonstração.")
+        }
+
         // Verificar se é o erro específico de limite de API
         if (data.details?.detail?.status === "detected_unusual_activity") {
           setApiLimitReached(true)
@@ -296,22 +322,23 @@ export default function TextToSpeech() {
         <Card className="w-full overflow-hidden relative z-10">
           <CardHeader>
             <CardTitle className="text-2xl">Conversor de Texto para Áudio</CardTitle>
-            <CardDescription>Transforme seu texto em áudio natural usando IA do ElevenLabs</CardDescription>
+            <CardDescription>Transforme seu texto em áudio natural usando IA</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {apiLimitReached && (
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Limite da API atingido</AlertTitle>
+                <AlertTitle>Modo de Demonstração Ativo</AlertTitle>
                 <AlertDescription>
-                  O plano gratuito do ElevenLabs está temporariamente indisponível.
-                  {!useDemoMode && (
-                    <Button variant="outline" size="sm" onClick={useDemoAudio} className="mt-2 w-full">
-                      Usar modo de demonstração
-                    </Button>
-                  )}
-                  {useDemoMode && (
-                    <p className="text-sm mt-2">Usando o modo de demonstração com a Web Speech API do navegador.</p>
+                  {useDemoMode ? (
+                    <p className="text-sm">Usando o modo de demonstração com a Web Speech API do navegador.</p>
+                  ) : (
+                    <>
+                      A API do ElevenLabs está temporariamente indisponível.
+                      <Button variant="outline" size="sm" onClick={useDemoAudio} className="mt-2 w-full">
+                        Usar modo de demonstração
+                      </Button>
+                    </>
                   )}
                 </AlertDescription>
               </Alert>
